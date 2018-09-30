@@ -434,7 +434,7 @@ bool daemonise()
         return true;
     }
 #ifdef DGDEBUG
-    return true; // if debug mode is enabled we don't want to detach
+    //return true; // if debug mode is enabled we don't want to detach
 #endif
 
     if (is_daemonised) {
@@ -1689,7 +1689,7 @@ int fc_controlit()   //
         }
         int q_size = o.http_worker_Q.size();
 #ifdef DGDEBUG
-        std::cerr << thread_id << "busychildren:" << dystat->busychildren << " worker Q size:" << q_size << std::endl;
+        //std::cerr << thread_id << "busychildren:" << dystat->busychildren << " worker Q size:" << q_size << std::endl;
 #endif
         if( o.dstat_log_flag) {
             if (q_size > 10) {

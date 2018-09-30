@@ -53,6 +53,7 @@ OptionContainer o;
 thread_local std::string thread_id;
 
 bool is_daemonised;
+bool is_test;
 
 // regexp used during URL decoding by HTTPHeader
 // we want it compiled once, not every time it's used, so do so on startup
@@ -93,10 +94,12 @@ void read_config(std::string& configfile, int type)
 int main(int argc, char *argv[])
 {
     is_daemonised = false;
+    is_test = false;
     bool nodaemon = false;
     bool needreset = false;
     bool total_block_list = false;
     std::string configfile(__CONFFILE);
+    std::string url("https://www.youtube.com");
     std::string prog_name("e2guardian");
     srand(time(NULL));
     int rc;
@@ -120,6 +123,27 @@ int main(int argc, char *argv[])
                 case 'q':
                     read_config(configfile, 0);
                     return sysv_kill(o.pid_filename,true);
+                case 't':
+                    is_test = true;
+                    o.no_logger = true;
+                    if ((i + 1) < argc) {
+                        url = argv[i + 1];
+                        dobreak = true;
+                        std::cout << "Reading content from stdin" << std::endl;
+                    } else {
+                        std::cerr << "URL required for ip and url list filtering" << std::endl;
+                        return 1;
+                    }
+                    break;
+                case 'w':
+                    if ((i + 1) < argc) {
+                        o.http_workers = String(argv[i + 1]).toLong();
+                        dobreak = true;
+                    } else {
+                        std::cerr << "Number of http_workers not specified!" << std::endl;
+                        return 1;
+                    }
+                    break;
                 case 'Q':
                     read_config(configfile, 0);
                     sysv_kill(o.pid_filename, false);
@@ -161,7 +185,11 @@ int main(int argc, char *argv[])
                     o.use_total_block_list = total_block_list;
                     break;
                 case 'h':
+#ifdef DGDEBUG
+                    std::cout << "Usage: " << argv[0] << " [{-c ConfigFileName|-v|-P|-h|-N|-q|-s|-r|-g|-i|-t URL|-w ThreadCount}]" << std::endl;
+#else
                     std::cout << "Usage: " << argv[0] << " [{-c ConfigFileName|-v|-P|-h|-N|-q|-s|-r|-g|-i}]" << std::endl;
+#endif
                     std::cout << "  -v gives the version number and build options." << std::endl;
                     std::cout << "  -h gives this message." << std::endl;
                     std::cout << "  -c allows you to specify a different configuration file location." << std::endl;
@@ -173,6 +201,10 @@ int main(int argc, char *argv[])
                     std::cout << "     but this does not reset the httpworkers option (amongst others)." << std::endl;
                     std::cout << "  -g  same as -r  (Issues a USR1)" << std::endl;
                     std::cout << "  -i read lists from stdin" << std::endl;
+#ifdef DGDEBUG
+                    std::cout << "  -t allows you to test if a url is blocked for debugging configuration" << std::endl;
+                    std::cout << "  -w allows you to specify a low number of http workers for debugging" << std::endl;
+#endif
 #ifdef __BENCHMARK
                     std::cout << "  --bs benchmark searching filter group 1's bannedsitelist" << std::endl;
                     std::cout << "  --bu benchmark searching filter group 1's bannedurllist" << std::endl;
@@ -242,6 +274,22 @@ int main(int argc, char *argv[])
             lines.push_back(strline);
         }
         String *strline = NULL;
+            // NaughtyFilter
+            std::string file;
+            NaughtyFilter n;
+            while (!lines.empty()) {
+                strline = lines.back();
+                lines.pop_back();
+                file += strline->toCharArray();
+                delete strline;
+            }
+            DataBuffer d(file.c_str(), file.length());
+            String f;
+            n.checkme(&d, f, f);
+            std::cout << n.isItNaughty << std::endl
+                      << n.whatIsNaughty << std::endl
+                      << n.whatIsNaughtyLog << std::endl
+                      << n.whatIsNaughtyCategories << std::endl;
         times(&then);
         switch (benchmark) {
         case 's':
@@ -315,7 +363,7 @@ int main(int argc, char *argv[])
     }
 #endif
 
-    if (sysv_amirunning(o.pid_filename)) {
+    if (!is_test && sysv_amirunning(o.pid_filename)) {
         syslog(LOG_ERR, "%s", "I seem to be running already!");
         std::cerr << "I seem to be running already!" << std::endl;
         return 1; // can't have two copies running!!
@@ -424,6 +472,37 @@ int main(int argc, char *argv[])
     absurl_re.comp("[\"'](http|ftp)://.*?[\"']"); // find absolute URLs in quotes
     relurl_re.comp("(href|src)\\s*=\\s*[\"'].*?[\"']"); // find relative URLs in quotes
 #endif
+
+    if (is_test) {
+        std::string line;
+        std::deque<String *> lines;
+        String *strline = NULL;
+        while (!std::cin.eof()) {
+            std::getline(std::cin, line);
+            strline = new String(line);
+            lines.push_back(strline);
+        }
+        std::string file;
+        NaughtyFilter n;
+        while (!lines.empty()) {
+            strline = lines.back();
+            lines.pop_back();
+            file += strline->toCharArray();
+            delete strline;
+        }
+        DataBuffer d(file.c_str(), file.length());
+        String f;
+//const char *rawbody, off_t rawbodylen, const String *url,
+//    const String *domain, FOptionContainer* &foc, unsigned int phraselist, int limit, bool searchterms)
+//  o.lm.l[o.fg[0]->banned_phrase_list]
+//	String domain = url.after("://").before("/");
+//        n.checkme(&d, file.length(), url, domain, o.fg[0], o.fg[0]->, o.fg[0]->naughtyness_limit, false);
+        std::cout << n.isItNaughty << std::endl
+                  << n.whatIsNaughty << std::endl
+                  << n.whatIsNaughtyLog << std::endl
+                  << n.whatIsNaughtyCategories << std::endl;
+        return n.isItNaughty ? 1 : 0;
+    }
 
     // this is no longer a class, but the comment has been retained for historical reasons. PRA 03-10-2005
     //FatController f;  // Thomas The Tank Engine

@@ -346,7 +346,13 @@ bool OptionContainer::read(std::string& filename, int type)
         }
         exchange_timeout = exchange_timeout_sec  * 1000;
 
-        http_workers= findoptionI("httpworkers");
+#ifdef DGDEBUG
+        if (http_workers == 0) {
+#endif
+            http_workers= findoptionI("httpworkers");
+#ifdef DGDEBUG
+        }
+#endif
         if (http_workers == 0) {
 		http_workers = 100;
 		if (!is_daemonised){
@@ -354,9 +360,13 @@ bool OptionContainer::read(std::string& filename, int type)
 		}
                 syslog(LOG_ERR, "http_workers settings cannot be zero: value set to 100");
 	}
+#ifdef DGDEBUG
+        std::cout << "Using " << http_workers << " worker threads" << std::endl;
+#else
         if (!realitycheck(http_workers, 20, 20000, "httpworkers")) {
-        return false;
+            return false;
         } // check its a reasonable value
+#endif
 
         monitor_helper = findoptionS("monitorhelper");
         if (monitor_helper == "") {
